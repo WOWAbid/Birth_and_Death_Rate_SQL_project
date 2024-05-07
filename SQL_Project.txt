@@ -1,0 +1,173 @@
+-- Create Tables
+CREATE TABLE area (
+    location_ID INT PRIMARY KEY,
+    land_area DECIMAL,
+    country_name VARCHAR(100),
+    city_name VARCHAR(100)
+);
+
+CREATE TABLE birth_table (
+    Birth_id INT PRIMARY KEY,
+    location_ID INT,
+    baby_name VARCHAR(100),
+    sex VARCHAR(10),
+    
+    FOREIGN KEY (location_ID) REFERENCES area(location_ID)
+);
+
+CREATE TABLE death_table(
+    death_id INT PRIMARY KEY,
+    Birth_id INT,
+    location_ID INT,
+    personName VARCHAR(100),
+    sex VARCHAR(10),
+    Death_age INT,
+    cause_of_death VARCHAR(100),
+      
+    FOREIGN KEY (location_ID) REFERENCES area(location_ID)
+);
+
+CREATE TABLE population_table(
+    location_ID INT,
+    total_population INT,
+    male_population INT,
+    female_population INT,
+    FOREIGN KEY (location_ID) REFERENCES area(location_ID)
+
+-- Insert Sample Data
+
+INSERT INTO area (location_ID, land_area, country_name, city_name)
+VALUES
+    (1, 1000, 'Country A', 'City X'),
+    (2, 800, 'Country B', 'City Y'),
+    (3, 1200, 'Country C', 'City Z'),
+    (4, 1500, 'Country D', 'City W'),
+    (5, 700, 'Country E', 'City V');
+
+INSERT INTO birth_table (Birth_id, location_ID, baby_name, sex)
+VALUES
+    (1, 1, 'John', 'Male'),
+    (2, 1, 'Emma', 'Female'),
+    (3, 2, 'Michael', 'Male'),
+    (4, 3, 'Sophia', 'Female'),
+    (5, 3, 'James', 'Male');
+
+INSERT INTO death_table (death_id, Birth_id, location_ID, personName, sex, Death_age, cause_of_death)
+VALUES
+    (1, 1, 1, 'Emily', 'Female', 75, 'Heart Attack'),
+    (2, 2, 1, 'William', 'Male', 68, 'Stroke'),
+    (3, 3, 2, 'Olivia', 'Female', 82, 'Cancer'),
+    (4, 4, 3, 'Liam', 'Male', 79, 'Pneumonia'),
+    (5, 5, 3, 'Ava', 'Female', 88, 'Alzheimer');
+
+INSERT INTO population_table (location_ID, total_population, male_population, female_population)
+VALUES
+    (1, 5000, 2500, 2500),
+    (2, 4000, 2000, 2000),
+    (3, 6000, 3000, 3000),
+    (4, 4500, 2300, 2200),
+    (5, 3000, 1500, 1500);
+
+
+
+-- Calculate Birth Rate
+SELECT location_ID, COUNT(*) AS num_births, 
+       (COUNT(*) / (SELECT total_population FROM population_table WHERE population_table.location_ID = birth_table.location_ID)) AS birth_rate
+FROM birth_table
+GROUP BY location_ID;
+
+
+-- Calculate Death Rate
+SELECT location_ID, COUNT(*) AS num_deaths, 
+       (COUNT(*) / (SELECT total_population FROM population_table WHERE population_table.location_ID = death_table.location_ID)) AS death_rate
+FROM death_table
+GROUP BY location_ID;
+
+-- Calculate Percentage of Causes of Death
+SELECT location_ID, cause_of_death, 
+       (COUNT(*) / (SELECT COUNT(*) FROM death_table WHERE death_table.location_ID = death_table.location_ID)) * 100 AS percentage
+FROM death_table
+GROUP BY location_ID, cause_of_death;
+
+-- Find Highest Cause of Death
+SELECT location_ID, cause_of_death, COUNT(*) AS death_count
+FROM death_table
+GROUP BY location_ID, cause_of_death
+ORDER BY COUNT(*) DESC
+FETCH FIRST ROW ONLY;
+
+-- Trigger to update population when a new birth is inserted
+CREATE OR REPLACE TRIGGER increase_population_birth
+AFTER INSERT ON birth_table
+FOR EACH ROW
+BEGIN
+    UPDATE population_table
+    SET total_population = total_population + 1,
+        male_population = CASE WHEN :NEW.sex = 'Male' THEN male_population + 1 ELSE male_population END,
+        female_population = CASE WHEN :NEW.sex = 'Female' THEN female_population + 1 ELSE female_population END
+    WHERE location_ID = :NEW.location_ID;
+END;
+/
+
+-- Trigger to update population when a new death is inserted
+CREATE OR REPLACE TRIGGER decrease_population_death
+AFTER INSERT ON death_table
+FOR EACH ROW
+BEGIN
+    UPDATE population_table
+    SET total_population = total_population - 1,
+        male_population = CASE WHEN :NEW.sex = 'Male' THEN male_population - 1 ELSE male_population END,
+        female_population = CASE WHEN :NEW.sex = 'Female' THEN female_population - 1 ELSE female_population END
+    WHERE location_ID = :NEW.location_ID;
+END;
+/
+
+DECLARE
+    v_location_id INT := 1; -- Specify the location ID for which you want to analyze population change
+    v_birth_rate NUMBER;
+    v_death_rate NUMBER;
+    v_net_population_change NUMBER;
+    v_population_growth_status VARCHAR2(20);
+BEGIN
+    -- Calculate birth rate
+    SELECT COUNT(*) / (SELECT total_population FROM population_table WHERE location_ID = v_location_id)
+    INTO v_birth_rate
+    FROM birth_table
+    WHERE location_ID = v_location_id;
+
+    -- Calculate death rate
+    SELECT COUNT(*) / (SELECT total_population FROM population_table WHERE location_ID = v_location_id)
+    INTO v_death_rate
+    FROM death_table
+    WHERE location_ID = v_location_id;
+
+    -- Calculate net population change
+    v_net_population_change := v_birth_rate - v_death_rate;
+
+    -- Determine population growth status
+    IF v_net_population_change > 0 THEN
+        v_population_growth_status := 'Growing';
+    ELSIF v_net_population_change < 0 THEN
+        v_population_growth_status := 'Decreasing';
+    ELSE
+        v_population_growth_status := 'Stable';
+    END IF;
+
+    -- Display results
+    DBMS_OUTPUT.PUT_LINE('Birth Rate: ' || v_birth_rate);
+    DBMS_OUTPUT.PUT_LINE('Death Rate: ' || v_death_rate);
+    DBMS_OUTPUT.PUT_LINE('Net Population Change: ' || v_net_population_change);
+    DBMS_OUTPUT.PUT_LINE('Population Growth Status: ' || v_population_growth_status);
+END;
+/
+
+-- Display contents of the tables
+SELECT * FROM area;
+
+SELECT * FROM birth_table;
+
+SELECT * FROM death_table;
+
+SELECT * FROM population_table;
+
+
